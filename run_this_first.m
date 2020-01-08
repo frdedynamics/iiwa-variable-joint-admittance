@@ -2,13 +2,20 @@ clear all; clc;
 
 %% Custom ROS messages
 
-if 0 
+if 0
     % Execute this loop once to create the custom messages.
     % Also READ and follow the 3 Command Window instructions. 
     rosgenmsg("./custom_msg")
 end
 
-addpath('./custom_msg\matlab_gen\msggen')
+if ismac || isunix
+    addpath("./custom_msg/matlab_gen/msggen")
+elseif ispc
+    addpath("./custom_msg\matlab_gen\msggen")
+else
+    disp("what kind of wizardry is this machine?")
+    return
+end
 
 %% Time
 
