@@ -25,7 +25,7 @@ sccprj/
 codegen/
 matlab_gen/
 *_ert_rtw/
-build_ros_model.sh
+build_ros_model*.sh
 *.slxc
 *.tgz
 

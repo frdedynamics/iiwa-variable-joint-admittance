@@ -39,7 +39,7 @@ multiplier = 10;
 
 if (multiplier > 1)
     qmean_interpolate = interp1(t,qmean,t_start:dt/multiplier:t_end);
-    qmean_interpolate = qmean_interpolate(1:multiplier*num_samples-3,:);
+    qmean_interpolate = qmean_interpolate(1:multiplier*num_samples-multiplier,:);
     
     t = t_start:dt:multiplier*t_end;
     t = t(1:min(multiplier*num_samples, length(qmean_interpolate)));
