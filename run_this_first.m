@@ -17,6 +17,17 @@ else
     return
 end
 
+%% ROS master env
+
+if ~contains(getenv('ROS_MASTER_URI'),"http://172.31.1.21:11311")
+    user_input = input("Should master be http://172.31.1.21:11311? 1/0");
+    if user_input == 1
+        setenv('ROS_MASTER_URI','http://172.31.1.21:11311')
+    else
+        return
+    end
+end
+
 %% Time
 
 % Timestep dt needs to match iiwa expected 
