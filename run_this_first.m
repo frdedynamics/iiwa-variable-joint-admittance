@@ -36,7 +36,7 @@ end
 % Timestep dt needs to match iiwa expected 
 % setSendPeriodMilliSec and setReceiveMultiplier
 % e.g. setSendPeriodMilliSec(1), setReceiveMultiplier(2) -> dt = 0.002
-dt = 0.002;
+dt = 0.001;
 
 load picknplace_qmean.mat
 
@@ -100,10 +100,25 @@ plot(tmp.t, tmp.qd,'k')
 
 clear tmp q_end_motion dq_end_motion ddq_end_motion
 
+%% Run a few rounds
+
+mean_motion.time = [
+    mean_motion.time;
+    mean_motion.time+mean_motion.time(end) + dt;
+    mean_motion.time+2*mean_motion.time(end) + 2*dt;
+    mean_motion.time+3*mean_motion.time(end) + 3*dt
+    ];
+mean_motion.signals.values = [
+    mean_motion.signals.values; 
+    mean_motion.signals.values;
+    mean_motion.signals.values;
+    mean_motion.signals.values
+    ];
+
+figure(2); clf;
+plot(mean_motion.time, mean_motion.signals.values)
+hold on
+grid on
+
 %% Update simulink time
 t = mean_motion.time;
-
-    
-
-
-
