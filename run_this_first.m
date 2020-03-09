@@ -1,4 +1,7 @@
 clear all; clc;
+fig_num = 1;
+max_joint_velocity = 5*pi/180;
+max_joint_deccelaration = 15*pi/180;
 
 %% Custom ROS messages
 
@@ -38,7 +41,10 @@ end
 % e.g. setSendPeriodMilliSec(1), setReceiveMultiplier(2) -> dt = 0.002
 dt = 0.001;
 
-load picknplace_qmean.mat
+load picknplace2_qmean_qvar.mat
+daniel_data.qmean = qmean;
+daniel_data.q_var = q_var;
+daniel_data.t = t;
 
 num_samples = length(qmean);
 t_start = 0;
@@ -47,12 +53,26 @@ t_end = t_start + dt*num_samples;
 t = t_start:dt:t_end;
 t = t(1:num_samples);
 
+figure(fig_num);clf; fig_num = fig_num + 1;
+subplot(311);
+plot(t,qmean*180/pi, 'LineWidth',1.5);
+title('original data')
+legend('1','2','3','4','5','6','7')
+grid on;
+subplot(312);
+plot(t(1:end-1),diff(qmean)*180/pi/dt, 'LineWidth',1.5);
+grid on;
+subplot(313);
+plot(t(1:end-2),diff(diff(qmean)/dt)*180/pi/dt, 'LineWidth',1.5);
+grid on;
 
 %% Interpolate
-multiplier = 10;
+multiplier = 3;
 
 if (multiplier > 1)
-    qmean_interpolate = interp1(t,qmean,t_start:dt/multiplier:t_end);
+    for i=1:7
+        qmean_interpolate(:,i) = spline(t,qmean(:,i),t_start:dt/multiplier:t_end);
+    end
     qmean_interpolate = qmean_interpolate(1:multiplier*num_samples-multiplier,:);
     
     t = t_start:dt:multiplier*t_end;
@@ -64,7 +84,6 @@ if (multiplier > 1)
    
 else
     t = t(1:num_samples);
-    length(t)
     mean_motion.time = t';
     mean_motion.signals.values = qmean;
     % mean_motion.signals.dimensions=[DimValues]
@@ -75,28 +94,113 @@ clear qmean_interpolate multiplier qmean
 %% Initial postition
 q_0 = mean_motion.signals.values(1,:);
 
-%% Back to start
-
-figure(1); clf;
-plot(mean_motion.time, mean_motion.signals.values)
+%% Plot 
+figure(99); clf;
+    
+subplot(311)
+plot(mean_motion.time, mean_motion.signals.values*180/pi, 'LineWidth',1.5);
 hold on
 grid on
 
+subplot(312)
+plot(mean_motion.time(1:end-1),(180/pi)*diff(mean_motion.signals.values)/dt, 'LineWidth',1.5)
+hold on
+grid on
+
+subplot(313)
+plot(mean_motion.time(1:end-2),(180/pi)*diff(diff(mean_motion.signals.values)/dt)/dt, 'LineWidth',1.5)
+hold on
+grid on
+
+%% Slow down
 q_end_motion = mean_motion.signals.values(end,:);
-dq_end_motion = (mean_motion.signals.values(end,:)-...
-    mean_motion.signals.values(end-1,:))/dt;
-ddq_end_motion = (dq_end_motion-((mean_motion.signals.values(end-1,:)-...
-    mean_motion.signals.values(end-2,:))/dt))/dt;
+tmp = diff(mean_motion.signals.values)/dt;
+dq_end_motion = tmp(end,:);
+tmp = diff(tmp)/dt;
+ddq_end_motion = tmp(end,:);
+clear tmp
+if any(abs(dq_end_motion) > max_joint_velocity)
+    
+    
+    q_end_motion = mean_motion.signals.values(end,:);
+    tmp = diff(mean_motion.signals.values)/dt;
+    dq_end_motion = tmp(end,:);
+    tmp = diff(tmp)/dt;
+    ddq_end_motion = tmp(end,:);
+    tmp = diff(tmp)/dt;
+    dddq_end_motion = tmp(end,:);
+
+    tmp = simplest_path_planner(dq_end_motion, ddq_end_motion,dddq_end_motion, ...
+        zeros(size(q_0)), zeros(size(q_0)), zeros(size(q_0)), ...
+        mean_motion.time(end), max_joint_deccelaration, dt);
+    tmp.ddqd = tmp.dqd;
+    tmp.dqd = tmp.qd;
+    tmp.qd = q_end_motion + cumsum(tmp.dqd*dt);
+    
+    figure(99);
+    subplot(311)
+    plot(tmp.t, tmp.qd*180/pi,'k--', 'LineWidth',1.5)
+    subplot(312)
+    plot(tmp.t(1:end-1), tmp.dqd(1:end-1,:)*180/pi,'k--', 'LineWidth',1.5)
+    subplot(313)
+    plot(tmp.t(1:end-2), tmp.ddqd(1:end-2,:)*180/pi,'k--', 'LineWidth',1.5)
+    
+    mean_motion.time = [mean_motion.time; tmp.t'];
+    mean_motion.signals.values = [mean_motion.signals.values; tmp.qd];
+    
+    figure(fig_num); clf; fig_num = fig_num + 1;
+    subplot(311);
+    plot(tmp.t,tmp.qd*180/pi)
+    grid on
+    title('Slow down')
+    subplot(312);
+    plot(tmp.t(1:end-1),tmp.dqd(1:end-1,:)*180/pi)
+    hold on
+    grid on
+    plot([tmp.t(1), tmp.t(end)], [max_joint_velocity, max_joint_velocity]*180/pi, 'r--')
+    plot([tmp.t(1), tmp.t(end)], [-max_joint_velocity, -max_joint_velocity]*180/pi, 'r--')
+    subplot(313);
+    plot(tmp.t(1:end-2),tmp.ddqd(1:end-2,:)*180/pi)
+    grid on
+end
+
+
+clear q_end_motion dq_end_motion ddq_end_motion
+
+%% Back to start
+
+figure(99);
+
+q_end_motion = mean_motion.signals.values(end,:);
+tmp = diff(mean_motion.signals.values)/dt;
+dq_end_motion = tmp(end,:);
+tmp = diff(tmp)/dt;
+ddq_end_motion = tmp(end,:);
+% dq_end_motion = (mean_motion.signals.values(end,:)-...
+%     mean_motion.signals.values(end-1,:))/dt
+% ddq_end_motion = (dq_end_motion-((mean_motion.signals.values(end-1,:)-...
+%     mean_motion.signals.values(end-2,:))/dt))/dt
 
 tmp = simplest_path_planner(q_end_motion, dq_end_motion, ddq_end_motion, ...
     q_0, zeros(size(q_0)), zeros(size(q_0)), ...
-    mean_motion.time(end), 0.5*pi/180, dt);
+    mean_motion.time(end), max_joint_velocity, dt);
 
 
 mean_motion.time = [mean_motion.time; tmp.t'];
 mean_motion.signals.values = [mean_motion.signals.values; tmp.qd];
 
-plot(tmp.t, tmp.qd,'k')
+subplot(311)
+plot(tmp.t, tmp.qd*180/pi, 'LineWidth',1.5)
+plot(tmp.t, tmp.qd*180/pi,'k--', 'LineWidth',1)
+legend('1','2','3','4','5','6','7')
+
+subplot(312)
+plot(tmp.t(1:end-1), tmp.dqd(1:end-1,:)*180/pi, 'LineWidth',1.5)
+plot(tmp.t(1:end-1), tmp.dqd(1:end-1,:)*180/pi,'k--', 'LineWidth',1)
+
+subplot(313)
+plot(tmp.t(1:end-2), tmp.ddqd(1:end-2,:)*180/pi, 'LineWidth',1.5)
+plot(tmp.t(1:end-2), tmp.ddqd(1:end-2,:)*180/pi,'k--', 'LineWidth',1)
 
 clear tmp q_end_motion dq_end_motion ddq_end_motion
 
@@ -115,10 +219,21 @@ mean_motion.signals.values = [
     mean_motion.signals.values
     ];
 
-figure(2); clf;
-plot(mean_motion.time, mean_motion.signals.values)
+figure(fig_num);clf; fig_num = fig_num + 1;
+plot(mean_motion.time, mean_motion.signals.values*180/pi)
+legend('1','2','3','4','5','6','7')
 hold on
 grid on
 
 %% Update simulink time
 t = mean_motion.time;
+
+figure(99);
+subplot(311)
+axis tight
+subplot(312)
+axis tight
+subplot(313)
+axis tight
+
+
