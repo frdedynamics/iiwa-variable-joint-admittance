@@ -2,6 +2,7 @@ clear all; clc;
 fig_num = 1;
 max_joint_velocity = 5*pi/180;
 max_joint_deccelaration = 15*pi/180;
+max_joint_variance_roc = 0.2*pi/180;
 
 %% Custom ROS messages
 
@@ -53,18 +54,46 @@ t_end = t_start + dt*num_samples;
 t = t_start:dt:t_end;
 t = t(1:num_samples);
 
+%% Plot original data, mean trajectory
 figure(fig_num);clf; fig_num = fig_num + 1;
 subplot(311);
 plot(t,qmean*180/pi, 'LineWidth',1.5);
-title('original data')
+title('original data mean trajectory')
+ylabel('[\circ]');
 legend('1','2','3','4','5','6','7')
 grid on;
+axis tight
 subplot(312);
 plot(t(1:end-1),diff(qmean)*180/pi/dt, 'LineWidth',1.5);
+ylabel('[\circ/s]');
 grid on;
+axis tight
 subplot(313);
 plot(t(1:end-2),diff(diff(qmean)/dt)*180/pi/dt, 'LineWidth',1.5);
+ylabel('[\circ/s^2]');
 grid on;
+axis tight
+
+%% Plot original data, variance
+figure(fig_num);clf; fig_num = fig_num + 1;
+subplot(311);
+plot(t,q_var*180/pi, 'LineWidth',1.5);
+title('original data variance')
+ylabel('[\circ^2]');
+legend('1','2','3','4','5','6','7')
+grid on;
+axis tight
+subplot(312);
+plot(t(1:end-1),diff(q_var)*180/pi/dt, 'LineWidth',1.5);
+ylabel('[\circ/s ^2]');
+grid on;
+axis tight
+subplot(313);
+plot(t(1:end-2),diff(diff(q_var)/dt)*180/pi/dt, 'LineWidth',1.5);
+ylabel('[\circ/s^2 ^2]');
+grid on;
+axis tight
+
 
 %% Interpolate
 multiplier = 3;
@@ -72,27 +101,37 @@ multiplier = 3;
 if (multiplier > 1)
     for i=1:7
         qmean_interpolate(:,i) = spline(t,qmean(:,i),t_start:dt/multiplier:t_end);
+        qvar_interpolate(:,i) = spline(t,q_var(:,i),t_start:dt/multiplier:t_end);
     end
     qmean_interpolate = qmean_interpolate(1:multiplier*num_samples-multiplier,:);
+    qvar_interpolate = qvar_interpolate(1:multiplier*num_samples-multiplier,:);
     
     t = t_start:dt:multiplier*t_end;
     t = t(1:min(multiplier*num_samples, length(qmean_interpolate)));
 %     length(t)
     mean_motion.time = t';
+    variable_stiffness.time = t';
+    
     mean_motion.signals.values = qmean_interpolate;
+    variable_stiffness.signals.values = qvar_interpolate;
     % mean_motion.signals.dimensions=[DimValues]
    
 else
     t = t(1:num_samples);
     mean_motion.time = t';
+    variable_stiffness.time = t';
+    
     mean_motion.signals.values = qmean;
+    variable_stiffness.signals.values = q_var;
     % mean_motion.signals.dimensions=[DimValues]
 end
 
-clear qmean_interpolate multiplier qmean
+clear qmean_interpolate qmean qvar_interpolate multiplier q_var
+
 
 %% Initial postition
 q_0 = mean_motion.signals.values(1,:);
+q_var_0 = variable_stiffness.signals.values(1,:);
 
 %% Plot 
 figure(99); clf;
@@ -101,16 +140,44 @@ subplot(311)
 plot(mean_motion.time, mean_motion.signals.values*180/pi, 'LineWidth',1.5);
 hold on
 grid on
+ylabel('[\circ]');
+title('Experiment data mean trajectory')
 
 subplot(312)
 plot(mean_motion.time(1:end-1),(180/pi)*diff(mean_motion.signals.values)/dt, 'LineWidth',1.5)
 hold on
 grid on
+ylabel('[\circ/s]');
 
 subplot(313)
 plot(mean_motion.time(1:end-2),(180/pi)*diff(diff(mean_motion.signals.values)/dt)/dt, 'LineWidth',1.5)
 hold on
 grid on
+ylabel('[\circ/s^2]');
+
+
+%% Plot variable
+figure(98); clf;
+    
+subplot(311)
+plot(mean_motion.time, variable_stiffness.signals.values*180/pi, 'LineWidth',1.5);
+hold on
+grid on
+ylabel('[\circ ^2]');
+title('Experiment data stiffness')
+
+subplot(312)
+plot(variable_stiffness.time(1:end-1),(180/pi)*diff(variable_stiffness.signals.values)/dt, 'LineWidth',1.5)
+hold on
+grid on
+ylabel('[\circ/s ^2]');
+
+subplot(313)
+plot(variable_stiffness.time(1:end-2),(180/pi)*diff(diff(variable_stiffness.signals.values)/dt)/dt, 'LineWidth',1.5)
+hold on
+grid on
+ylabel('[\circ/s^2 ^2]');
+
 
 %% Slow down
 q_end_motion = mean_motion.signals.values(end,:);
@@ -202,7 +269,41 @@ subplot(313)
 plot(tmp.t(1:end-2), tmp.ddqd(1:end-2,:)*180/pi, 'LineWidth',1.5)
 plot(tmp.t(1:end-2), tmp.ddqd(1:end-2,:)*180/pi,'k--', 'LineWidth',1)
 
-clear tmp q_end_motion dq_end_motion ddq_end_motion
+%% Stiffen up
+time_to_spend = (length(mean_motion.time)-length(variable_stiffness.time))*dt;
+time_needed = max(variable_stiffness.signals.values(end,:)/max_joint_variance_roc);
+if length(tmp.t)*dt < time_needed
+    disp('FAIL: not enough time to stiffen that upper lip')
+    return
+end
+res = zeros(ceil(time_to_spend/dt),7);
+res2 = interp1( ... 
+    [variable_stiffness.time(end), variable_stiffness.time(end) + time_needed], ...
+    [variable_stiffness.signals.values(end,:); zeros(1,7)], ...
+    variable_stiffness.time(end):dt:(variable_stiffness.time(end) + time_needed) ...
+);
+res(1:length(res2),:) = res2;
+variable_stiffness.signals.values = [
+    variable_stiffness.signals.values; 
+    res];
+variable_stiffness.time = mean_motion.time;
+
+figure(98);
+subplot(311)
+plot(tmp.t, res*180/pi, 'LineWidth',1.5)
+plot(tmp.t, res*180/pi,'k--', 'LineWidth',1)
+legend('1','2','3','4','5','6','7')
+
+subplot(312)
+plot(tmp.t(1:end-1), diff(res)*180/pi/dt, 'LineWidth',1.5)
+plot(tmp.t(1:end-1), diff(res)*180/pi/dt,'k--', 'LineWidth',1)
+
+subplot(313)
+plot(tmp.t(1:end-2), diff(diff(res)*180/pi/dt)/dt, 'LineWidth',1.5)
+plot(tmp.t(1:end-2), diff(diff(res)*180/pi/dt)/dt,'k--', 'LineWidth',1)
+
+
+clear tmp q_end_motion dq_end_motion ddq_end_motion res res2 time_to_spend time_needed
 
 %% Run a few rounds
 
@@ -219,16 +320,56 @@ mean_motion.signals.values = [
     mean_motion.signals.values
     ];
 
+
 figure(fig_num);clf; fig_num = fig_num + 1;
 plot(mean_motion.time, mean_motion.signals.values*180/pi)
+title('Repeating the motions, stiffness')
 legend('1','2','3','4','5','6','7')
 hold on
 grid on
+ylabel('[\circ]');
+axis tight
+
+%% final part, please find time to clean up this mess!
+variable_stiffness.time = [
+    variable_stiffness.time;
+    variable_stiffness.time+variable_stiffness.time(end) + dt;
+    variable_stiffness.time+2*variable_stiffness.time(end) + 2*dt;
+    variable_stiffness.time+3*variable_stiffness.time(end) + 3*dt
+    ];
+variable_stiffness.signals.values = [
+    variable_stiffness.signals.values; 
+    variable_stiffness.signals.values;
+    variable_stiffness.signals.values;
+    variable_stiffness.signals.values
+    ];
+
+base_line_stiffness = [40 40 15 40 2 2 2];
+stiffness_range = 0.5*base_line_stiffness;
+variable_stiffness.signals.values = base_line_stiffness - ...
+    stiffness_range.*min(0.03,max(variable_stiffness.signals.values ,0))/0.03;
+
+figure(fig_num);clf; fig_num = fig_num + 1;
+plot(variable_stiffness.time, variable_stiffness.signals.values)
+title('Repeating the motions, stiffness')
+legend('1','2','3','4','5','6','7')
+hold on
+grid on
+ylabel('[Nm/rad]');
+axis tight
 
 %% Update simulink time
 t = mean_motion.time;
 
 figure(99);
+subplot(311)
+axis tight
+subplot(312)
+axis tight
+subplot(313)
+axis tight
+
+figure(98);
 subplot(311)
 axis tight
 subplot(312)
