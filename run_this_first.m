@@ -4,6 +4,15 @@ max_joint_velocity = 5*pi/180;
 max_joint_deccelaration = 15*pi/180;
 max_joint_variance_roc = 0.2*pi/180;
 
+%% ROS Python 2.7
+pe = pyenv;
+if pe.Status == 'Loaded'
+    disp('To change the Python version, restart MATLAB, then update pyenv.')
+else
+    pyenv('Version','2.7');
+end
+
+
 %% Custom ROS messages
 
 if 0
