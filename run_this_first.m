@@ -6,12 +6,21 @@ max_joint_variance_roc = 0.2*pi/180;
 
 %% ROS Python 2.7
 pe = pyenv;
-if pe.Status == 'Loaded'
-    disp('To change the Python version, restart MATLAB, then update pyenv.')
-else
-    pyenv('Version','2.7');
+if pe.Version ~= "2.7"
+    if pe.Status == "Loaded"
+        disp('To change the Python version, restart MATLAB, then update pyenv.')
+    else
+        pyenv('Version','2.7');
+    end
 end
 
+%% ROS C++ compiler
+if ~strcmp(mex.getCompilerConfigurations('C++','Selected').Name, 'Microsoft Visual C++ 2017')
+    user_input = input("Change C++ compiler to MS Visual C++ 2017?");
+    if user_input == 1
+        mex -setup:'C:\Program Files\MATLAB\R2020b\bin\win64\mexopts\msvcpp2017.xml' C++
+    end
+end
 
 %% Custom ROS messages
 
