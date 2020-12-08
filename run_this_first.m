@@ -3,6 +3,7 @@ fig_num = 1;
 max_joint_velocity = 5*pi/180;
 max_joint_deccelaration = 15*pi/180;
 max_joint_variance_roc = 0.2*pi/180;
+save_figures = 0;
 
 %% ROS Python 2.7
 pe = pyenv;
@@ -394,5 +395,24 @@ subplot(312)
 axis tight
 subplot(313)
 axis tight
+
+%% Save all figures
+if save_figures
+    disp('Storing figures..')
+    figHandles = findall(groot, 'Type', 'figure');
+    for i=1:length(figHandles)
+        figHandles(i).WindowState = 'maximized';
+        tmp = figHandles(i).Children.get('title'); 
+        figure_filename = tmp{length(tmp)}.String;
+        figure_filename = replace(figure_filename,' ','_');
+        figure_filename = replace(figure_filename,',','_')
+        saveas(figHandles(i),strcat('./saved_figures/',figure_filename),'png')
+        saveas(figHandles(i),strcat('./saved_figures/',figure_filename),'epsc')
+    end
+end
+clc
+
+%% Done
+disp('Done.')
 
 
